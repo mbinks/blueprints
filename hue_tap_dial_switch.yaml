@@ -1,0 +1,147 @@
+blueprint:
+  name: Hue tap dial switch
+  description: Control multiple lights with a Hue tap dial switch
+  source_url: https://github.com/GordonFreemanK/ha-blueprints/blob/main/hue_tap_dial_switch.yaml
+  domain: automation
+  input:
+    switches:
+      name: Switches
+      description: The switches that will trigger the automation
+      selector:
+        device:
+          integration: zha
+          manufacturer: Signify Netherlands B.V.
+          model: RDM002
+          multiple: true
+    button_1_lights:
+      name: Button 1 lights
+      description: The lights to toggle with Button 1
+      selector:
+        entity:
+          domain: light
+          multiple: true
+    button_2_lights:
+      name: Button 2 lights
+      description: The lights to toggle with Button 2
+      selector:
+        entity:
+          domain: light
+          multiple: true
+      default: []
+    button_3_lights:
+      name: Button 3 lights
+      description: The lights to toggle with Button 3
+      selector:
+        entity:
+          domain: light
+          multiple: true
+      default: []
+    button_4_lights:
+      name: Button 4 lights
+      description: The lights to toggle with Button 4
+      selector:
+        entity:
+          domain: light
+          multiple: true
+      default: []
+    brightness:
+      name: Brightness
+      description: The brightness to turn on the lights at
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: '%'
+      default: 80
+mode: restart
+max_exceeded: silent
+
+trigger:
+- platform: event
+  event_type: zha_event
+
+variables:
+  command: "{{ trigger.event.data.command }}"
+  device_id: "{{ trigger.event.data.device_id }}"
+  switches: !input switches
+  button_1_lights: !input button_1_lights
+  button_2_lights: !input button_2_lights
+  button_3_lights: !input button_3_lights
+  button_4_lights: !input button_4_lights
+
+condition:
+- condition: template
+  value_template: "{{ device_id in switches }}"
+
+action:
+- choose:
+  - conditions: "{{ command == 'recall' }}"
+    sequence:
+    - variables:
+        scene: "{{ trigger.event.data.args[1] }}"
+        lights: >
+          {% if scene == 1 %}
+            {{ button_1_lights }}
+          {% elif scene == 0 %}
+            {{ button_2_lights }}
+          {% elif scene == 5 %}
+            {{ button_3_lights }}
+          {% elif scene == 4 %}
+            {{ button_4_lights }}
+          {% endif %}
+        state: "{{ expand(lights) | selectattr('state','eq','on') | list | length > 0 }}"
+    - if:
+      - condition: template
+        value_template: "{{ state }}"
+      then:
+      - service: light.turn_off
+        target:
+          entity_id: "{{ lights }}"
+      else:
+      - service: light.turn_on
+        target:
+          entity_id: "{{ lights }}"
+        data:
+          brightness_pct: !input brightness
+    - repeat:
+        for_each: "{{ lights }}"
+        sequence:
+        - event: light_toggled
+          event_data:
+            state: "{{ not state }}"
+            entity_id: "{{ repeat.item }}"
+  - conditions: "{{ command == 'step_with_on_off' }}"
+    sequence:
+    - variables:
+        step_mode: "{{ trigger.event.data.params.step_mode }}"
+        step_size: "{{ trigger.event.data.params.step_size }}"
+    - choose:
+      - conditions: "{{ step_mode == 'StepMode.Up' }}"
+        sequence:
+        - variables:
+            lights: >
+              {% set lights_all = expand([button_1_lights, button_2_lights, button_3_lights, button_4_lights]) %}
+              {% set lights_on = lights_all | selectattr('state','eq','on') | list %}
+              {% set lights_used = lights_on if lights_on | length > 0 else lights_all %}
+              {{ lights_used | map(attribute='entity_id') | unique | list }}
+        - service: light.turn_on
+          target:
+            entity_id: "{{ lights }}"
+          data:
+            brightness_step_pct: "{{ step_size }}"
+            transition: 1
+      - conditions: "{{ step_mode == 'StepMode.Down' }}"
+        sequence:
+        - variables:
+            lights: >
+              {{ expand([button_1_lights, button_2_lights, button_3_lights, button_4_lights])
+                | selectattr('state','eq','on')
+                | map(attribute='entity_id')
+                | unique
+                | list }}
+        - service: light.turn_on
+          target:
+            entity_id: "{{ lights }}"
+          data:
+            brightness_step_pct: '{{ -step_size }}'
+            transition: 1
