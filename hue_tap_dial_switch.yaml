@@ -1,7 +1,7 @@
 blueprint:
   name: Hue tap dial switch
   description: Control multiple lights with a Hue tap dial switch
-  source_url: https://github.com/GordonFreemanK/ha-blueprints/blob/main/hue_tap_dial_switch.yaml
+  source_url: https://github.com/mbinks/blueprints/blob/main/hue_tap_dial_switch.yaml
   domain: automation
   input:
     switches:
